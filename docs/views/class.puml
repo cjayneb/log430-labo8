@@ -1,0 +1,157 @@
+@startuml
+    class User {
+        + id: int
+        + name: string
+        + email: string
+    }
+
+    class Product {
+        + id: int
+        + name: string
+        + sku: string
+        + price: float
+    }
+
+    class Stock {
+        + product_id: int
+        + quantity: int
+    }
+
+    class OrderItem {
+        + id: int
+        + order_id: int
+        + product_id: int
+        + quantity: int
+        + unit_price: float
+    }
+
+    class Order {
+        + id: int
+        + user_id: int
+        + total_amount: float
+        + payment_link: str
+    }
+
+    class WriteOrder {
+        + add_order(Order) : int
+        + delete_order(int) : int
+        + add_order_to_redis(Order) : void
+        + delete_order_from_redis(int) : void
+    }
+
+    class WriteStock {
+        + check_in_items_to_stock(OrderItem[]) : void
+        + check_out_items_from_stock(OrderItem[]) : void
+        + update_stock_redis(OrderItem[], String) : void
+    }
+
+    class ReadStock {
+        + get_stock_by_id(int) : JSONObject
+        + get_stock_for_all_products() : JSONArray
+    }
+
+    class ReadOrder {
+        + get_order_by_id(int) : Order
+        + get_highest_spending_users() : JSONArray
+        + get_best_selling_products() : JSONArray
+    }
+
+    class OrderController {
+        + create_order(RequestBody) : JSONObject
+        + delete_order(int) : JSONObject
+        + get_order(int) : Order
+        + get_report_highest_spending_users(int) : JSONArray
+        + get_report_best_selling_products(int) : JSONArray
+    }
+
+    class StockController {
+        + set_stock(RequestBody) : JSONObject
+        + get_stock(int) : JSONObject
+        + get_stock_overview() : JSONArray
+    }
+
+    class OrderEventConsumer {
+        + start() : void
+        + stop() : void
+        - _process_message(dict) : void
+    }
+
+    class KafkaConsumer {
+
+    }
+
+    class HandlerRegistry {
+        + register(EventHandler) : void
+        + get_handler(str) : EventHandler
+        + has_handler(str) : boolean
+        + get_supported_events() : list
+    }
+
+    class EventHandler {
+        + get_event_type() : str
+        + handle(dict) : void
+    }    
+
+    class OrderEventProducer {
+        + get_instance() : KafkaProducer
+    }
+
+    class KafkaProducer {
+        + send(str, JSONObject) : void
+    }
+
+    class Outbox {
+        + id: int
+        + user_id: int
+        + order_id: int
+        + order_items : JSON
+        + total_amount: float
+        + payment_link: str
+    }
+
+    class OutboxProcessor {
+        + run(JSONObject) : void
+        - _process_outbox_item(JSONObject, JSONObject) : void
+        - _request_payment_transaction(JSONObject) : JSONObject
+        - _get_event_data(JSONObject) : JSONObject
+    }
+
+
+    OrderEventConsumer --> KafkaConsumer
+    KafkaConsumer --> HandlerRegistry
+    HandlerRegistry --> EventHandler
+    WriteOrder --> OrderEventProducer
+    OrderEventProducer --> KafkaProducer
+    OrderItem --> Order
+    User <-- Order
+    Product <-- OrderItem
+    WriteOrder --> Order
+    WriteOrder --> OrderItem
+    WriteOrder --> Product
+
+    WriteStock --> Stock
+    OrderController --> WriteOrder
+    OrderController --> ReadOrder
+    StockController --> ReadStock
+    StockController --> WriteStock
+    Stock --> Product
+
+    
+    OrderHandlers --> OrderEventProducer
+    StockHandlers --> OrderEventProducer
+    PaymentHandlers --> OrderEventProducer
+    OutboxProcessor --> OrderEventProducer
+
+    OrderHandlers --> WriteStock
+    StockHandlers --> Outbox
+    StockHandlers --> OutboxProcessor
+    OutboxProcessor --> Outbox
+    StockHandlers --> WriteOrder
+    PaymentHandlers --> WriteOrder
+    PaymentHandlers --> WriteStock
+
+    EventHandler <|-- OrderHandlers
+    EventHandler <|-- StockHandlers
+    EventHandler <|-- PaymentHandlers
+    
+@enduml

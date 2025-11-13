@@ -1,0 +1,24 @@
+@startuml
+  node Magasin {
+    component "KrakenD" 
+    component "store_manager.py" 
+    database "MySQL 1"
+    database "Redis"
+    "store_manager.py" <--> "MySQL 1"
+    "store_manager.py" <--> "Redis"
+    component "Kafka" 
+  }
+
+  node ServicePaiement {
+    component "payments_api.py"
+    database "MySQL 2" 
+    "payments_api.py" <--> "MySQL 2"
+  }
+
+  "Kafka" <-left-> "payments_api.py" : KafkaProtocol
+  "Kafka" <-left-> "store_manager.py" : KafkaProtocol
+  "KrakenD" <--> "payments_api.py" : HTTP
+  "KrakenD" <--> "store_manager.py" : HTTP
+  
+
+@enduml

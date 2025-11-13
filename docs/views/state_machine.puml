@@ -1,0 +1,21 @@
+@startuml
+1 : CREATING_ORDER
+6 : CANCELLING_ORDER
+2 : DECREASING_STOCK
+5 : INCREASING_STOCK
+3 : CREATING_PAYMENT
+4 : COMPLETING_ORDER_SAGA
+
+[*] --> 1
+1 --> 2 : OrderCreated
+2 --> 3 : StockDecreased
+3 --> 4 : PaymentCreated
+
+3 --> 5  : PaymentCreationFailed
+5 --> 6 : StockIncreased
+6 --> 4 : OrderCancelled
+4 --> [*] : SagaCompleted
+
+2 --> 6 : StockDecreaseFailed
+1 --> 4 : OrderCreationFailed
+@enduml

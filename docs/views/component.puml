@@ -1,0 +1,71 @@
+@startuml
+package View {
+    [@app.post(/orders)] 
+}
+
+package Models {
+    [Order] 
+    [OrderItem] 
+    [Stock] 
+}
+
+package WriteModel {
+    [WriteOrder] 
+    [WriteStock]
+}
+
+package OutboxPatternClasses {
+    [Outbox] 
+    [OutboxProcessor]
+}
+
+package Controllers {
+    [OrderController] 
+}
+
+package Consumers {
+    [OrderEventConsumer] 
+    [KafkaConsumer]
+}
+
+package Handlers {
+    [HandlerRegistry] 
+    [EventHandler]
+    [OrderHandlers]
+    [StockHandlers]
+    [PaymentHandlers]
+}
+
+package Producers {
+    [OrderEventProducer]
+    [KafkaProducer]
+}
+
+package PaymentsAPI {
+    [payments_api.py]
+}
+
+[@app.post(/orders)] --> [OrderController]
+[OrderController] --> [WriteOrder]
+[WriteOrder] <-left-> [Order]
+[Order] <-left-> [OrderItem]
+[WriteOrder] -right-> [OrderEventProducer]
+[OrderEventProducer] --> [KafkaProducer]
+[KafkaProducer] -right-> [KafkaConsumer]
+[KafkaConsumer] --> [OrderEventConsumer]
+[OrderEventConsumer] -left-> [HandlerRegistry]
+[HandlerRegistry] -left-> [EventHandler]
+[OrderHandlers] -down-> [WriteOrder]
+[StockHandlers] -down-> [WriteStock]
+[WriteStock] <-left-> [Stock]
+[PaymentHandlers] <--> [payments_api.py]
+[OrderHandlers] -down-> [OrderEventProducer]
+[StockHandlers] --> [OrderEventProducer]
+[PaymentHandlers] --> [OrderEventProducer]
+[EventHandler] --> [OrderHandlers]
+[EventHandler] --> [StockHandlers]
+[EventHandler] --> [PaymentHandlers]
+[StockHandlers] --> [OutboxProcessor]
+[OutboxProcessor] <--> [Outbox]
+[OutboxProcessor] --> [OrderEventProducer]
+@enduml
