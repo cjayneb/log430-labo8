@@ -5,6 +5,7 @@ Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 """
 
 import json
+import time
 from logger import Logger
 import pytest
 from store_manager import app
@@ -38,6 +39,9 @@ def test_saga(client):
     assert order_id > 0
     logger.debug(f"Created order with ID: {order_id}")
     
+    # Sleep to let the order payment_link get updated in redis
+    time.sleep(2.0)
+
     # 2. Check if order really exists and whether it has a payment link
     response = client.get(f'/orders/{order_id}')
     assert response.status_code == 201, f"Failed to get order: {response.get_json()}"

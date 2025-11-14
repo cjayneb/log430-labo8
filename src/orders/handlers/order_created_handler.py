@@ -24,17 +24,7 @@ class OrderCreatedHandler(EventHandler):
     
     def handle(self, event_data: Dict[str, Any]) -> None:
         """Execute every time the event is published"""
-        # TODO: Remplacez TOUTES les lignes de cette méthode par les lignes de la méthode _handle_implemented. Il suffit de copier-coller.
-        event_data['event'] = "StockDecreased"
-        self.logger.debug(f"payment_link={event_data['payment_link']}")
-        OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
-
-    def _handle_implemented(self, event_data: Dict[str, Any]) -> None:
-        """
-        This method is here as a reference for the implementation of the method handle.
-        It will never be called if Sotre Manager is following normal operation.
-        Once you copy-paste the implementation, you can delete this method if you want.
-        """
+        self.logger.debug("handling Order created event")
         order_event_producer = OrderEventProducer()
         try:
             # La création de la comande a réussi, alors déclenchez la mise à jour du stock.
@@ -43,13 +33,15 @@ class OrderCreatedHandler(EventHandler):
             session.commit()
             # Si la mise à jour du stock a réussi, déclenchez StockDecreased.
             event_data['event'] = "StockDecreased"
+            order_event_producer.get_instance().send(config.KAFKA_TOPIC, value=event_data)
         except Exception as e:
             session.rollback()
             # Si la mise à jour du stock a échoué, déclenchez StockDecreaseFailed.
             event_data['event'] = "StockDecreaseFailed"
             event_data['error'] = str(e)
+            order_event_producer.get_instance().send(config.KAFKA_TOPIC, value=event_data)
         finally:
             session.close()
-            order_event_producer.get_instance().send(config.KAFKA_TOPIC, value=event_data)
+            
 
 

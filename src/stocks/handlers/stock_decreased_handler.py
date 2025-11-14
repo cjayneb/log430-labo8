@@ -4,9 +4,14 @@ SPDX-License-Identifier: LGPL-3.0-or-later
 Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 """
 from typing import Dict, Any
+
+import requests
 import config
+from db import get_sqlalchemy_session
 from event_management.base_handler import EventHandler
 from orders.commands.order_event_producer import OrderEventProducer
+from payments.models.outbox import Outbox
+from payments.outbox_processor import OutboxProcessor
 
 
 class StockDecreasedHandler(EventHandler):
@@ -22,25 +27,52 @@ class StockDecreasedHandler(EventHandler):
     
     def handle(self, event_data: Dict[str, Any]) -> None:
         """Execute every time the event is published"""
-        '''
-        TODO: Consultez le diagramme de machine à états pour savoir quelle opération 
-        effectuer dans cette méthode. 
-        
-        **Conseil** : si vous préférez, avant de travailler sur l'implémentation event-driven, 
-        effectuez un appel synchrone (requête HTTP) à l'API Payments, attendez le résultat, puis 
-        continuez la saga. L'approche synchrone peut être plus facile à comprendre dans un premier temps.
-          
-        En revanche, dans une implémentation 100% event-driven, ce StockDecreasedHandler se trouvera 
-        dans l'API Payments et non dans Store Manager, car c'est l'API Payments qui doit 
-        être notifiée de la mise à jour du stock afin de générer une transaction de paiement.
-        '''
-        try:
-            # Si la transaction de paiement a été crée, déclenchez PaymentCreated.
-            event_data['event'] = "PaymentCreated"
-            self.logger.debug(f"payment_link={event_data['payment_link']}")
-            OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
+        session = get_sqlalchemy_session()
+        try: 
+            new_outbox_item = Outbox(order_id=event_data['order_id'], 
+                                    user_id=event_data['user_id'], 
+                                    total_amount=event_data['total_amount'],
+                                    order_items=event_data['order_items'])
+            session.add(new_outbox_item)
+            session.flush() 
+            session.commit()
+            OutboxProcessor().run(new_outbox_item)
         except Exception as e:
-            # TODO: Si la transaction de paiement n'était pas crée, déclenchez l'événement adéquat selon le diagramme.
+            session.rollback()
+            self.logger.debug("La création d'une transaction de paiement a échoué : " + str(e))
+            event_data['event'] = "PaymentCreationFailed"
             event_data['error'] = str(e)
+            OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
+        finally:
+            session.close()
 
+        # try:
+        #     payment_transaction = {
+        #         "user_id": event_data['user_id'],
+        #         "order_id": event_data['order_id'],
+        #         "total_amount": event_data['total_amount']
+        #     }
 
+        #     self.logger.debug("Requête à POST /payments")
+        #     response_from_payment_service = requests.post(
+        #         'http://api-gateway:8080/payments-api/payments',
+        #         json=payment_transaction,
+        #         headers={'Content-Type': 'application/json'}
+        #     )
+        #     if response_from_payment_service.ok:
+        #         data = response_from_payment_service.json() 
+        #         payment_id = data['payment_id']
+        #         self.logger.debug(f"ID paiement: {payment_id}")
+        #         event_data['event'] = "PaymentCreated"
+        #         event_data['payment_link'] = f"http://api-gateway:8080/payments-api/payments/process/{payment_id}"
+        #     else:
+        #         self.logger.error("Erreur:", response_from_payment_service.status_code, response_from_payment_service.text)
+        #         event_data['event'] = "PaymentCreationFailed"
+        #         event_data['error'] = f"Erreur:{response_from_payment_service.status_code}, {response_from_payment_service.text}"
+
+        # except Exception as e:
+        #     # TODO: Si la transaction de paiement n'était pas crée, déclenchez l'événement adéquat selon le diagramme.
+        #     event_data['error'] = str(e)
+        #     event_data['event'] = "PaymentCreationFailed"
+        # finally:
+        #     OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)

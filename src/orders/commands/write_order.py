@@ -115,6 +115,16 @@ def modify_order(order_id: int, is_paid: bool, payment_id: int):
         print(e)
         return False
     finally:
+        logger.debug(f"order items : {order.order_items}")
+        items = []
+        for i in order.order_items:
+            item = {}
+            item['product_id'] = i.product_id
+            item['quantity'] = i.quantity
+            item['unit_price'] = i.unit_price
+            logger.debug(i)
+            items.append(item)
+        add_order_to_redis(order_id, order.user_id, order.total_amount, items, order.payment_link)
         session.close()
 
 def delete_order(order_id: int):

@@ -7,6 +7,7 @@ from typing import Dict, Any
 import config
 from event_management.base_handler import EventHandler
 from orders.commands.order_event_producer import OrderEventProducer
+from orders.commands.write_order import delete_order
 
 
 class StockIncreasedHandler(EventHandler):
@@ -25,12 +26,15 @@ class StockIncreasedHandler(EventHandler):
         # TODO: Consultez le diagramme de machine à états pour savoir quelle opération effectuer dans cette méthode. 
 
         try:
+            delete_order(event_data['order_id'])
             # Si l'operation a réussi, déclenchez OrderCancelled.
             event_data['event'] = "OrderCancelled"
-            OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
         except Exception as e:
             # TODO: Si l'operation a échoué, continuez la compensation des étapes précedentes.
             event_data['error'] = str(e)
+            event_data['event'] = "SagaCompleted"
+        finally:
+            OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
 
 
 

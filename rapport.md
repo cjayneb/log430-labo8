@@ -140,14 +140,59 @@ def get_order_by_id(order_id):
 
 
 ### Question 3
-> 
+> Est-ce qu'une architecture Saga orchestrée pourrait aussi bénéficier de l'utilisation du patron Outbox, ou c'est un bénéfice exclusif de la saga chorégraphiée? Justifiez votre réponse avec un diagramme ou en faisant des références aux classes, modules et méthodes dans le code.
+
+De la façon dont nous avions implémenté Saga orchestrée dans le labo 6, on ne pourrait bénéficier de l'utilisation du patron Outbox, car le code s'attend à une réponse synchrone du payments-api pour continuer la saga :
+
+```python
+while self.current_saga_state is not OrderSagaState.COMPLETED:
+    # TODO: vérifier TOUS les 6 états saga. Utilisez run() ou rollback() selon les besoins.
+    self.logger.debug(f"Current sgag state: {self.current_saga_state}")
+    if self.current_saga_state == OrderSagaState.CREATING_ORDER:
+        self.current_saga_state = self.create_order_handler.run()
+    elif self.current_saga_state == OrderSagaState.DECREASING_STOCK:
+        self.increase_stock_handler = DecreaseStockHandler(order_data["items"])
+        self.current_saga_state = self.increase_stock_handler.run()
+    elif self.current_saga_state == OrderSagaState.CREATING_PAYMENT:
+        self.create_payment_handler = CreatePaymentHandler(self.create_order_handler.order_id, order_data) # <=== Ici, on attend une réponse de notre handler, mais avec outbox, un évennement serait produit.
+        self.current_saga_state = self.create_payment_handler.run()
+    elif self.current_saga_state == OrderSagaState.INCREASING_STOCK:
+        self.current_saga_state = self.increase_stock_handler.rollback()
+    elif self.current_saga_state == OrderSagaState.CANCELLING_ORDER:
+        self.current_saga_state = self.create_order_handler.rollback()
+    else:
+        self.is_error_occurred = True
+        self.logger.debug(f"L'état saga n'est pas valide : {self.current_saga_state}")
+        self.current_saga_state = OrderSagaState.COMPLETED
+```
+
+Cependant, il est possible de bénéficier du patron outbox avec Saga orchestré en changeant l'implémentation de l'orchestrateur pour qu'il utilise un consommateur d'évennements et des handlers asynchrones comme on a fait dans ce labo ci.
 
 ### Question 4
+> Qu'est-ce qui arriverait si notre application s'arrête avant la création de l'enregistrement dans la table Outbox? Comment on pourrait améliorer notre implémentation pour résoudre ce problème? Justifiez votre réponse avec un diagramme ou en faisant des références aux classes, modules et méthodes dans le code.
 
-> 
+Si l'application s'arrête avant la création de la ligne dans la table Outbox, nous avons perdu un évennement et le paiement ne sera jamais créé, car kafka aura déjà auto-commiter le offset et le OutboxProcessor ne traitera jamais la requête.
+
+Pour améliorer cela, il faut rendre toute cette opération atomique il faudra :
+
+- Mettre auto-commit de kafka à False :
+```python
+enable_auto_commit=False
+```
+
+- Commit l'offset seulement lorsque `session.commit` a roulé pour créer la ligne Outbox.
+
+- Mettre en place une job asynchrone qui scan régulièrement la table Outbox pour traiter les items s'y trouvant.
+
+De cette façon, on ne perd pas d'évennement et le consommateur avancera seulement l'offset lorsqu'on est sûr que la ligne Outbox a été créé.
 
 ## Observations additionnelles
 
 ### Problème(s) rencontré(s)
 
-- 
+- Problème lors de l'ajout d'un consommateur d'évennement dans payments-api, car ce consommateur consommait les évennements du order saga avant le store manager et il n'avait pas de handler pour l'évennement initial OrderCreated.
+  - Solution : Ajout d'un topic pour chaque service, donc nous avons un topic pour les events que le store manager veut consommer et un topic pour les events que payments-api veut consommer et iil n'y a plus de conflit entre les consommateurs d'events.
+- Problème de consommation infinie d'events PaymentCreated lorsque l'event vient du payments-api.
+  - Mon handler pour l'event PaymentCreated ne changeait pas la valeur event dans event_data, ce qui causait un feedback loop.
+- Problème lors de la mise à jour des commandes auprès de redis pour que les tests passent.
+  - Ajout de la mise à jour dans redis lors de l'ajout du payment link dans une commande et ajout d'un sleep pour que le processus asynchrone avec Outbox se complète avant de récupérer la commande.

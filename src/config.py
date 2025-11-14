@@ -22,6 +22,7 @@ REDIS_DB = int(os.getenv("REDIS_DB"))
 # Kafka Configuration
 KAFKA_HOST = os.getenv("KAFKA_HOST")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
+KAFKA_PAYMENT_TOPIC = os.getenv("KAFKA_PAYMENT_TOPIC")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
 KAFKA_AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET")
 LOG_LEVEL = os.getenv("LOG_LEVEL")

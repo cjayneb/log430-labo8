@@ -23,6 +23,7 @@ from orders.controllers.order_controller import create_order, remove_order, get_
 from orders.controllers.user_controller import create_user, remove_user, get_user
 from stocks.controllers.product_controller import create_product, remove_product, get_product
 from stocks.controllers.stock_controller import get_stock, populate_redis_on_startup, set_stock, get_stock_overview
+from payments.outbox_processor import OutboxProcessor
 
 app = Flask(__name__)
 
@@ -50,6 +51,12 @@ consumer_service = OrderEventConsumer(
     registry=registry
 )
 consumer_service.start()
+
+# il faut éxécuter le processeur seulement 1 fois à chaque initialisation
+is_outbox_processor_running = False
+if not is_outbox_processor_running:
+   OutboxProcessor().run()
+   is_outbox_processor_running = True
 
 @app.get('/health-check')
 def health():
